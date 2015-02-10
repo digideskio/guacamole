@@ -15,7 +15,7 @@ class DeBrujinGraphSuite extends SparkFunSuite {
   test("build graph") {
 
     val sequence = "TCATCTCAAAAGAGATCGA"
-    val graph = DeBrujinGraph(Seq(sequence), kmerSize = 8)
+    val graph = DeBrujinGraph.fromString(Seq(sequence), kmerSize = 8)
 
     val firstKmer = Kmer("TCATCTCA")
     val nextKmer = Kmer("CATCTCAA")
@@ -30,7 +30,7 @@ class DeBrujinGraphSuite extends SparkFunSuite {
   test("build graph with short kmers and correct counts") {
 
     val sequence = "TCATCTTAAAAGACATAAA"
-    val graph = DeBrujinGraph(Seq(sequence), kmerSize = 3)
+    val graph = DeBrujinGraph.fromString(Seq(sequence), kmerSize = 3)
 
     val firstKmer = Kmer("TCA")
     val nextKmer = Kmer("CAT")
@@ -41,22 +41,31 @@ class DeBrujinGraphSuite extends SparkFunSuite {
     assert(graph.kmerCounts(lastKmer) === 3)
   }
 
-  test("find all paths") {
+//  test("find all paths") {
+//
+//    val sequence = "TCATCTTAAAAGACATAAA"
+//    val graph = DeBrujinGraph.fromString(Seq(sequence), kmerSize = 6)
+//    val paths = graph.depthFirstSearch(Kmer("TCATCT"), minPathLength = 10)
+//
+//    assert(paths.length === 1)
+//  }
 
-    val sequence = "TCATCTTAAAAGACATAAA"
-    val graph = DeBrujinGraph(Seq(sequence), kmerSize = 6)
-    val paths = graph.allPaths(Kmer("TCATCT"), minPathLength = 10)
+    sparkTest("find root node") {
+      val graph = DeBrujinGraph(
+        smallWindowSequences,
+        kmerSize = 90)
+      graph.pruneKmers(3)
+      val roots = graph.roots
+      assert (roots.size === 1)
+    }
 
-    assert(paths.length === 1)
-  }
-
-  sparkTest("simple read assembly") {
-    val graph = DeBrujinGraph(smallWindowSequences, kmerSize = 20)
-    val paths = graph.allPaths(
-      Kmer("TAACCCTAACCCTAACCCTA"),
-      minPathLength = 85,
-      maxPathLength = 125
-    )
-    assert (paths.length === 5)
-  }
+//  sparkTest("simple read assembly") {
+//    val graph = DeBrujinGraph(smallWindowSequences, kmerSize = 20)
+//    val paths = graph.depthFirstSearch(
+//      Kmer("TAACCCTAACCCTAACCCTA"),
+//      minPathLength = 85,
+//      maxPathLength = 125
+//    )
+//    assert (paths.length === 5)
+//  }
 }

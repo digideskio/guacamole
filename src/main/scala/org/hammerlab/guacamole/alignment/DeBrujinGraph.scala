@@ -13,7 +13,7 @@ class DeBrujinGraph(val kmerCounts: mutable.Map[Kmer, Int], kmerSize: Int) {
       .foreach( {case (kmer, count) => kmerCounts.remove(kmer) })
   }
 
-  def allPaths(seed: Kmer,
+  def depthFirstSearch(seed: Kmer,
                minPathLength: Int = 100,
                maxPathLength: Int = 1000,
                maxPaths: Int = 10): List[(Path, Int)] = {
@@ -40,15 +40,31 @@ class DeBrujinGraph(val kmerCounts: mutable.Map[Kmer, Int], kmerSize: Int) {
     paths
   }
 
+  def roots: Iterable[Kmer] = {
+     kmerCounts.keys.filter(parents(_).size == 0)
+  }
+
+  def allPaths(minPathLength: Int = 100,
+               maxPathLength: Int = 1000,
+               maxPaths: Int = 10): Iterable[(Path, Int)] = {
+    roots.flatMap(depthFirstSearch(_, minPathLength, maxPathLength, maxPaths))
+  }
+
   def children(node: Kmer): Seq[Kmer] = {
     node.possibleNext.filter(kmerCounts.contains).toSeq
+  }
+
+  def parents(node: Kmer): Seq[Kmer] = {
+    node.possiblePrevious.filter(kmerCounts.contains).toSeq
   }
 
 }
 
 object DeBrujinGraph {
   type Sequence = Seq[Byte]
-  def apply(sequences: Seq[Sequence], kmerSize: Int): DeBrujinGraph = {
+  def apply(sequences: Seq[Sequence],
+            kmerSize: Int,
+            minOccurrence: Int = 1): DeBrujinGraph = {
     val kmerCounts: mutable.Map[Kmer, Int] = mutable.Map.empty[Kmer, Int]
 
     sequences.filter(Bases.allStandardBases(_))
@@ -61,11 +77,20 @@ object DeBrujinGraph {
         })
       )
 
-    new DeBrujinGraph(kmerCounts, kmerSize)
+    val graph = new DeBrujinGraph(kmerCounts, kmerSize)
+    //TODO(arahuja) Only add in kmers once they minOccurrence rather than post-pruning
+    graph.pruneKmers(minOccurrence)
+
+    graph
   }
 
-  def apply(sequences: Seq[String], kmerSize: Int, isString: Boolean = true): DeBrujinGraph = {
-    DeBrujinGraph(sequences.view.map(Bases.stringToBases(_)), kmerSize)
+  type Sequences = Seq[String]
+
+  def fromString(sequences: Sequences,
+            kmerSize: Int,
+            minOccurrence: Int = 1,
+            isString: Boolean = true): DeBrujinGraph = {
+    DeBrujinGraph(sequences.view.map(Bases.stringToBases(_)), kmerSize, minOccurrence)
   }
 
 }
