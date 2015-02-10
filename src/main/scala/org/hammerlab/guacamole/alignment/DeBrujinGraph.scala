@@ -13,28 +13,34 @@ class DeBrujinGraph(val kmerCounts: mutable.Map[Kmer, Int], kmerSize: Int) {
       .foreach( {case (kmer, count) => kmerCounts.remove(kmer) })
   }
 
-  def depthFirstSearch(seed: Kmer,
-               minPathLength: Int = 100,
-               maxPathLength: Int = 1000,
-               maxPaths: Int = 10): List[(Path, Int)] = {
+  def depthFirstSearch(source: Kmer,
+                       sink: Kmer,
+                       kmerScore: (Kmer => Int) = kmerCounts.getOrElse(_, 0),
+                       minPathLength: Int = 1,
+                       maxPathLength: Int = 1000,
+                       maxPaths: Int = 10): List[(Path, Int)] = {
     var paths: List[(Path, Int)] = List.empty[(Path, Int)]
-    var frontier: mutable.Stack[Kmer] = mutable.Stack(seed)
+    var frontier: mutable.Stack[Kmer] = mutable.Stack(source)
     var currentPath: Path = List.empty
     var pathScore: Int = 0
     // explore branches until we accumulate the maximum number of appropriate length paths
     while (frontier.nonEmpty && paths.size < maxPaths) {
       val next = frontier.pop()
-      pathScore += kmerCounts(next)
+      pathScore += kmerScore(next)
       currentPath = next :: currentPath
-      val nextChildren = children(next)
-      if (nextChildren.nonEmpty && currentPath.size < maxPathLength) {
-        frontier ++= nextChildren
-      } else {
-        // avoid short branches and repetitive branches
-        if (currentPath.size + 1 >= minPathLength && currentPath.size < maxPathLength)
-          paths = (currentPath, pathScore) :: paths
-        currentPath = List.empty
-        pathScore = 0
+      if (next != sink && currentPath.size < maxPathLength) {
+        // Keep searching down tree
+        val nextChildren = children(next)
+        if (nextChildren.nonEmpty && currentPath.size < maxPathLength) {
+          frontier ++= nextChildren
+        } else { //found sink or too long
+          if (next == sink && currentPath.size + 1 >= minPathLength) {
+            // Found legitimate path to sink, save path
+            paths = (currentPath, pathScore) :: paths
+          } // else degenerate path, too long or too short
+          currentPath = List.empty
+          pathScore = 0
+        }
       }
     }
     paths
@@ -44,11 +50,11 @@ class DeBrujinGraph(val kmerCounts: mutable.Map[Kmer, Int], kmerSize: Int) {
      kmerCounts.keys.filter(parents(_).size == 0)
   }
 
-  def allPaths(minPathLength: Int = 100,
-               maxPathLength: Int = 1000,
-               maxPaths: Int = 10): Iterable[(Path, Int)] = {
-    roots.flatMap(depthFirstSearch(_, minPathLength, maxPathLength, maxPaths))
-  }
+//  def allPaths(minPathLength: Int = 100,
+//               maxPathLength: Int = 1000,
+//               maxPaths: Int = 10): Iterable[(Path, Int)] = {
+//    roots.flatMap(depthFirstSearch(_, minPathLength, maxPathLength, maxPaths))
+//  }
 
   def children(node: Kmer): Seq[Kmer] = {
     node.possibleNext.filter(kmerCounts.contains).toSeq
