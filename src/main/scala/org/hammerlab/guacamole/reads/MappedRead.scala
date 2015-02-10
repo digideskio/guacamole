@@ -105,6 +105,9 @@ case class MappedRead(
       mdTagString,
       Bases.basesToString(sequence)
     )
+
+
+  lazy val averageBaseQuality = baseQualities.sum.toFloat / baseQualities.length
 }
 
 case class MissingMDTagException(record: SAMRecord)
