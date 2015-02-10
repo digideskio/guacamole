@@ -3,9 +3,11 @@ package org.hammerlab.guacamole.alignment
 import org.hammerlab.guacamole.Bases
 
 case class Kmer(bases: Seq[Byte]) {
-  def head = bases.head
+  def prefix: Seq[Byte] = bases.slice(0, bases.length - 1)
+  def prefixKmer = Kmer(prefix)
 
-  def tail = bases.tail
+  def tailKmer = Kmer(bases.tail)
+  def tail = Kmer(bases.tail)
 
   def lastBase = bases.last
 
@@ -16,6 +18,20 @@ case class Kmer(bases: Seq[Byte]) {
       Kmer(bases.tail :+ Bases.C),
       Kmer(bases.tail :+ Bases.G)
     )
+  }
+
+
+  def possiblePrevious: Seq[Kmer] = {
+    Seq(
+      Kmer(Seq(Bases.A) ++ prefix),
+      Kmer(Seq(Bases.T) ++ prefix),
+      Kmer(Seq(Bases.C) ++ prefix),
+      Kmer(Seq(Bases.G) ++ prefix)
+    )
+  }
+
+  def :+(base: Byte): Kmer = {
+      Kmer(bases :+ base)
   }
 
   override def toString: String = Bases.basesToString(bases)
