@@ -5,12 +5,17 @@ import org.hammerlab.guacamole.alignment.AlignmentState.AlignmentState
 private[alignment] object AlignmentState extends Enumeration {
   type AlignmentState = Value
   val Match, Mismatch, Insertion, Deletion = Value
+
+  def isGapAlignment(state: AlignmentState) = {
+    state == AlignmentState.Insertion || state == AlignmentState.Deletion
+  }
 }
 
 case class ReadAlignment(alignments: Seq[AlignmentState], alignmentScore: Int) {
   def cigarKey(alignmentOperator: AlignmentState): String = {
     alignmentOperator match {
-      case AlignmentState.Match | AlignmentState.Mismatch => "M"
+      case AlignmentState.Match => "="
+      case AlignmentState.Mismatch => "X"
       case AlignmentState.Insertion => "I"
       case AlignmentState.Deletion => "D"
     }

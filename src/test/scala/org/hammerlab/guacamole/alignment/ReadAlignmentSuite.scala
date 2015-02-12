@@ -15,7 +15,7 @@ class ReadAlignmentSuite  extends FunSuite with Matchers {
         AlignmentState.Match,
         AlignmentState.Match), 60)
 
-    alignment.toCigar should be("6M")
+    alignment.toCigar should be("6=")
   }
 
   test ("test cigar string: mixed match/insertion") {
@@ -27,7 +27,7 @@ class ReadAlignmentSuite  extends FunSuite with Matchers {
         AlignmentState.Insertion,
         AlignmentState.Match), 60)
 
-    alignment.toCigar should be("3M2I1M")
+    alignment.toCigar should be("3=2I1=")
   }
 
 
@@ -41,6 +41,19 @@ class ReadAlignmentSuite  extends FunSuite with Matchers {
         AlignmentState.Insertion,
         AlignmentState.Match), 60)
 
-    alignment.toCigar should be("1M4I1M")
+    alignment.toCigar should be("1=4I1=")
+  }
+
+  test ("test cigar string: with mismatch") {
+    val alignment = ReadAlignment(
+      Seq(
+        AlignmentState.Match,
+        AlignmentState.Mismatch,
+        AlignmentState.Mismatch,
+        AlignmentState.Match,
+        AlignmentState.Match,
+        AlignmentState.Match), 60)
+
+    alignment.toCigar should be("1=2X3=")
   }
 }
