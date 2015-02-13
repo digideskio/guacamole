@@ -2,6 +2,8 @@ package org.hammerlab.guacamole.alignment
 
 import org.hammerlab.guacamole.Bases
 
+import scala.collection.mutable.ArrayBuffer
+
 case class Kmer(bases: Seq[Byte]) {
   def prefix: Seq[Byte] = bases.slice(0, bases.length - 1)
   def prefixKmer = Kmer(prefix)
@@ -40,5 +42,12 @@ case class Kmer(bases: Seq[Byte]) {
 object Kmer {
   def apply(seq: String): Kmer = {
     Kmer(Bases.stringToBases(seq).toArray)
+  }
+
+  def buildSequence(kmers: Seq[Kmer]): Array[Byte] = {
+    val seq = new ArrayBuffer[Byte]
+    kmers.headOption.map(seq ++= _.prefix)
+    kmers.foreach(seq += _.lastBase)
+    seq.toArray
   }
 }
