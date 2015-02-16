@@ -1,44 +1,41 @@
 /**
- * Licensed to Big Data Genomics (BDG) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The BDG licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+* Licensed to Big Data Genomics (BDG) under one
+* or more contributor license agreements.  See the NOTICE file
+* distributed with this work for additional information
+* regarding copyright ownership.  The BDG licenses this file
+* to you under the Apache License, Version 2.0 (the
+* "License"); you may not use this file except in compliance
+* with the License.  You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
 
 package org.hammerlab.guacamole.commands
 
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.hammerlab.guacamole.Common.Arguments.{GermlineCallerArgs, SomaticCallerArgs}
+import org.hammerlab.guacamole.Common.Arguments.GermlineCallerArgs
 import org.hammerlab.guacamole.DistributedUtil.PerSample
-import org.hammerlab.guacamole.alignment.DeBrujinGraph
+import org.hammerlab.guacamole._
+import org.hammerlab.guacamole.alignment.AlignmentState.AlignmentState
+import org.hammerlab.guacamole.alignment._
 import org.hammerlab.guacamole.filters.GenotypeFilter.GenotypeFilterArguments
-import org.hammerlab.guacamole.{ SparkCommand, DelayedMessages, Common, DistributedUtil }
-import org.hammerlab.guacamole.likelihood.Likelihood
-import org.hammerlab.guacamole.filters.PileupFilter.PileupFilterArguments
-import org.hammerlab.guacamole.filters.SomaticGenotypeFilter.SomaticGenotypeFilterArguments
 import org.hammerlab.guacamole.filters._
-import org.hammerlab.guacamole.pileup.Pileup
-import org.hammerlab.guacamole.reads.{MappedRead, Read}
-import org.hammerlab.guacamole.variants.{CalledAllele, AlleleConversions, AlleleEvidence, CalledSomaticAllele}
+import org.hammerlab.guacamole.reads.{MDTagUtils, MappedRead, Read}
+import org.hammerlab.guacamole.variants.{Allele, AlleleConversions, AlleleEvidence, CalledAllele}
 import org.hammerlab.guacamole.windowing.SlidingWindow
-import org.kohsuke.args4j.{ Option => Opt }
+import org.kohsuke.args4j.{Option => Opt}
 
 /**
- * Simple assembly based germline variant caller
- *
- */
+* Simple assembly based germline variant caller
+*
+*/
 object GermlineAssemblyCaller {
 
   protected class Arguments extends GermlineCallerArgs with GenotypeFilterArguments {
@@ -61,21 +58,62 @@ object GermlineAssemblyCaller {
     override val name = "germline-assembly"
     override val description = "call germline variants by assembling the surrounding region of reads"
 
+
+    def getVariantAlignments(alignment: ReadAlignment): Seq[(AlignmentState, Int)] = {
+      alignment
+        .alignments
+        .zipWithIndex
+        .filter(tup => AlignmentState.isGapAlignment(tup._1) ||tup._1 == AlignmentState.Mismatch)
+    }
+
+
     def discoverHaplotypes(graph: Option[DeBrujinGraph],
                            windows: PerSample[SlidingWindow[MappedRead]],
                            kmerSize: Int,
                            minAlignmentQuality: Int,
-                           minAverageBaseQuality: Int): (Option[DeBrujinGraph], Iterator[CalledAllele]) = {
+                           minAverageBaseQuality: Int,
+                           minOccurrence: Int = 2,
+                           expectedPloidy: Int = 2): (Option[DeBrujinGraph], Iterator[CalledAllele]) = {
 
-      val newReads = windows(0).newRegions
+      val currentWindow = windows(0)
+      val locus = currentWindow.currentLocus
+
+      val newReads = currentWindow.newRegions
       val filteredReads = newReads.filter(_.alignmentQuality > minAlignmentQuality)
 
-      val currentGraph: DeBrujinGraph = ???
-      val currentReference: Array[Byte] = ???
-      val referenceKmerStart = currentReference.slice(kmerSize)
+      // Should update graph instead of rebuilding it
+      // Need to keep track of reads removed from last update and reads added
+      val currentGraph: DeBrujinGraph = DeBrujinGraph(filteredReads.map(_.sequence), kmerSize, minOccurrence)
+      val currentReference: Array[Byte] = MDTagUtils.getReference(currentWindow.currentRegions())
 
-      currentGraph.depthFirstSearch(referenceKmer)
+      def buildVariant(locus: Long, tuple: (AlignmentState, Int)): CalledAllele = {
 
+        val variantType = tuple._1
+        val offset = tuple._2
+        val allele = Allele(Seq(currentReference((locus + offset).toInt)), Bases.stringToBases("<ALT>"))
+        val depth = filteredReads.length
+        CalledAllele(
+          currentWindow.newRegions.head.sampleName,
+          currentWindow.newRegions.head.referenceContig,
+          locus,
+          allele,
+          AlleleEvidence(1, depth, depth, depth, depth, filteredReads.map(_.alignmentQuality).sum / depth.toFloat, 30)
+        )
+      }
+
+      val referenceKmerSource = Kmer(currentReference.slice(0, kmerSize))
+      val referenceKmerSink = Kmer(currentReference.slice(currentReference.length - kmerSize, currentReference.length))
+
+      val paths = currentGraph.depthFirstSearch(referenceKmerSource, referenceKmerSink).sortBy(_._2) // sort paths by score
+
+      // Take ploidy paths
+      val topPaths = paths.take(expectedPloidy).map(path => Kmer.buildSequence(path._1))
+      // align paths to reference
+      val alignments = topPaths.map(HMMAligner.align(_, currentReference))
+      // output variants
+      var offset = 0
+      val variantAlignments = alignments.flatMap(getVariantAlignments(_).map( tup => buildVariant(locus, tup)))
+      (graph, variantAlignments.iterator)
     }
 
     override def run(args: Arguments, sc: SparkContext): Unit = {
@@ -89,19 +127,19 @@ object GermlineAssemblyCaller {
       val lociPartitions = DistributedUtil.partitionLociAccordingToArgs(args, loci, readSet.mappedReads)
 
       val genotypes: RDD[CalledAllele] = DistributedUtil.windowFlatMapWithState[MappedRead, CalledAllele, Option[DeBrujinGraph]](
-        readSet.mappedReads,
+        Seq(readSet.mappedReads),
         lociPartitions,
         skipEmpty = true,
         halfWindowSize = args.snvWindowRange,
         initialState = None,
-        (graph, window) =>
+        (graph, window) => {
           discoverHaplotypes(
             graph,
             window,
             args.kmerSize,
             args.minAlignmentQuality,
             args.minAverageBaseQuality)
-
+        }
       )
 
       readSet.mappedReads.unpersist()
