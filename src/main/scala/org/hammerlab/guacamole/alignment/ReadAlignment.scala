@@ -2,7 +2,7 @@ package org.hammerlab.guacamole.alignment
 
 import org.hammerlab.guacamole.alignment.AlignmentState.AlignmentState
 
-private[alignment] object AlignmentState extends Enumeration {
+object AlignmentState extends Enumeration {
   type AlignmentState = Value
   val Match, Mismatch, Insertion, Deletion = Value
 
