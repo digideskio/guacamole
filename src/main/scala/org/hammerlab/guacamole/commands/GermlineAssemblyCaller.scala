@@ -1,20 +1,20 @@
 /**
-* Licensed to Big Data Genomics (BDG) under one
-* or more contributor license agreements.  See the NOTICE file
-* distributed with this work for additional information
-* regarding copyright ownership.  The BDG licenses this file
-* to you under the Apache License, Version 2.0 (the
-* "License"); you may not use this file except in compliance
-* with the License.  You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Licensed to Big Data Genomics (BDG) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The BDG licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package org.hammerlab.guacamole.commands
 
@@ -41,7 +41,7 @@ object GermlineAssemblyCaller {
   protected class Arguments extends GermlineCallerArgs with GenotypeFilterArguments {
 
     @Opt(name = "--kmer-size", usage = "Length of kmer used for DeBrujin Graph assembly")
-    var kmerSize: Int = 85
+    var kmerSize: Int = 45
 
     @Opt(name = "--snv-window-range", usage = "Number of bases before and after to check for additional matches or deletions")
     var snvWindowRange: Int = 20
@@ -78,7 +78,7 @@ object GermlineAssemblyCaller {
       val currentWindow = windows(0)
       val locus = currentWindow.currentLocus
 
-      val newReads = currentWindow.newRegions
+      val newReads = currentWindow.currentRegions()
       val filteredReads = newReads.filter(_.alignmentQuality > minAlignmentQuality)
 
       // Should update graph instead of rebuilding it
@@ -101,8 +101,8 @@ object GermlineAssemblyCaller {
         )
       }
 
-      val referenceKmerSource = Kmer(currentReference.slice(0, kmerSize))
-      val referenceKmerSink = Kmer(currentReference.slice(currentReference.length - kmerSize, currentReference.length))
+      val referenceKmerSource = Kmer(currentReference.slice(0, kmerSize), kmerSize)
+      val referenceKmerSink = Kmer(currentReference.slice(currentReference.length - kmerSize, currentReference.length), kmerSize)
 
       val paths = currentGraph.depthFirstSearch(referenceKmerSource, referenceKmerSink).sortBy(_._2) // sort paths by score
 
@@ -111,7 +111,6 @@ object GermlineAssemblyCaller {
       // align paths to reference
       val alignments = topPaths.map(HMMAligner.align(_, currentReference))
       // output variants
-      var offset = 0
       val variantAlignments = alignments.flatMap(getVariantAlignments(_).map( tup => buildVariant(locus, tup)))
       (graph, variantAlignments.iterator)
     }
@@ -126,6 +125,9 @@ object GermlineAssemblyCaller {
       val loci = Common.loci(args, readSet)
       val lociPartitions = DistributedUtil.partitionLociAccordingToArgs(args, loci, readSet.mappedReads)
 
+      val kmerSize = args.kmerSize
+      val minAlignmentQuality = args.minAlignmentQuality
+      val minAverageBaseQuality = args.minAverageBaseQuality
       val genotypes: RDD[CalledAllele] = DistributedUtil.windowFlatMapWithState[MappedRead, CalledAllele, Option[DeBrujinGraph]](
         Seq(readSet.mappedReads),
         lociPartitions,
@@ -136,9 +138,9 @@ object GermlineAssemblyCaller {
           discoverHaplotypes(
             graph,
             window,
-            args.kmerSize,
-            args.minAlignmentQuality,
-            args.minAverageBaseQuality)
+            kmerSize,
+            minAlignmentQuality,
+            minAverageBaseQuality)
         }
       )
 

@@ -4,36 +4,35 @@ import org.hammerlab.guacamole.Bases
 
 import scala.collection.mutable.ArrayBuffer
 
-case class Kmer(bases: Seq[Byte]) {
-  def prefix: Seq[Byte] = bases.slice(0, bases.length - 1)
-  def prefixKmer = Kmer(prefix)
+case class Kmer(bases: Seq[Byte], kmerSize: Int) {
+  def prefix: Seq[Byte] = bases.slice(0, kmerSize)
+  def prefixKmer = Kmer(prefix, kmerSize)
 
-  def tailKmer = Kmer(bases.tail)
-  def tail = Kmer(bases.tail)
+  def tail = Kmer(bases.slice(bases.length - kmerSize, bases.length + 1), kmerSize)
 
   def lastBase = bases.last
 
   def possibleNext: Seq[Kmer] = {
     Seq(
-      Kmer(bases.tail :+ Bases.A),
-      Kmer(bases.tail :+ Bases.T),
-      Kmer(bases.tail :+ Bases.C),
-      Kmer(bases.tail :+ Bases.G)
+      Kmer(bases.tail :+ Bases.A, kmerSize),
+      Kmer(bases.tail :+ Bases.T, kmerSize),
+      Kmer(bases.tail :+ Bases.C, kmerSize),
+      Kmer(bases.tail :+ Bases.G, kmerSize)
     )
   }
 
 
   def possiblePrevious: Seq[Kmer] = {
     Seq(
-      Kmer(Seq(Bases.A) ++ prefix),
-      Kmer(Seq(Bases.T) ++ prefix),
-      Kmer(Seq(Bases.C) ++ prefix),
-      Kmer(Seq(Bases.G) ++ prefix)
+      Kmer(Seq(Bases.A) ++ prefix, kmerSize),
+      Kmer(Seq(Bases.T) ++ prefix, kmerSize),
+      Kmer(Seq(Bases.C) ++ prefix, kmerSize),
+      Kmer(Seq(Bases.G) ++ prefix, kmerSize)
     )
   }
 
   def :+(base: Byte): Kmer = {
-      Kmer(bases :+ base)
+      Kmer(bases :+ base, kmerSize)
   }
 
   override def toString: String = Bases.basesToString(bases)
@@ -41,7 +40,7 @@ case class Kmer(bases: Seq[Byte]) {
 
 object Kmer {
   def apply(seq: String): Kmer = {
-    Kmer(Bases.stringToBases(seq).toArray)
+    Kmer(Bases.stringToBases(seq).toArray, kmerSize = seq.length)
   }
 
   def buildSequence(kmers: Seq[Kmer]): Array[Byte] = {

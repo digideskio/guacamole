@@ -1,13 +1,11 @@
 package org.hammerlab.guacamole.reads
 
 import debox.Buffer
-import htsjdk.samtools.{ Cigar, CigarOperator }
+import htsjdk.samtools.{Cigar, CigarOperator}
 import org.bdgenomics.adam.util.MdTag
 import org.hammerlab.guacamole.Bases
-import scalaz.Zipper
 
 import scala.collection.JavaConversions
-import scala.collection.mutable.ListBuffer
 
 object MDTagUtils {
 
