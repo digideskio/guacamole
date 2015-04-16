@@ -112,6 +112,8 @@ object Common extends Logging {
 
     trait SomaticCallerArgs extends Output with TumorNormalReads with DistributedUtil.Arguments
 
+    trait StructuralVariantArgs extends Output with Reads with ConcordanceArgs with DistributedUtil.Arguments
+
   }
 
   /**
@@ -187,6 +189,8 @@ object Common extends Logging {
       "all"
     }
 
+    println("Loci to parse = " + lociToParse)
+
     val result = {
       if (lociToParse == "all") {
         // Call at all loci.
@@ -205,6 +209,12 @@ object Common extends Logging {
         parsed
       }
     }
+
+    println("Including %,d loci across %,d contig(s): %s".format(
+      result.count,
+      result.contigs.length,
+      result.truncatedString()))
+
     progress("Including %,d loci across %,d contig(s): %s".format(
       result.count,
       result.contigs.length,

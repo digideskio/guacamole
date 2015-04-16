@@ -55,6 +55,7 @@ object DistributedUtil extends Logging {
   def partitionLociAccordingToArgs[M <: HasReferenceRegion: ClassTag](args: Arguments,
                                                                       loci: LociSet,
                                                                       regionRDDs: RDD[M]*): LociMap[Long] = {
+    println(args)
     val tasks = if (args.parallelism > 0) args.parallelism else regionRDDs(0).partitions.length
     if (args.partitioningAccuracy == 0) {
       partitionLociUniformly(tasks, loci)
@@ -165,6 +166,9 @@ object DistributedUtil extends Logging {
     val sc = regionRDDs(0).sparkContext
 
     // Step (1). Split loci uniformly into micro partitions.
+    println("Tasks = " + tasks)
+    println("Loci Used = " + lociUsed.count)
+    println("Accuracy = " + accuracy)
     assume(tasks >= 1)
     assume(lociUsed.count > 0)
     assume(regionRDDs.length > 0)

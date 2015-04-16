@@ -45,7 +45,8 @@ case class MappedRead(
     mdTagString: String,
     failedVendorQualityChecks: Boolean,
     isPositiveStrand: Boolean,
-    matePropertiesOpt: Option[MateProperties]) extends Read with HasReferenceRegion {
+    matePropertiesOpt: Option[MateProperties],
+    readName: String) extends Read with HasReferenceRegion {
 
   assert(baseQualities.length == sequence.length,
     "Base qualities have length %d but sequence has length %d".format(baseQualities.length, sequence.length))
@@ -99,12 +100,17 @@ case class MappedRead(
   })
 
   override def toString(): String =
-    "MappedRead(%d, %s, %s, %s)".format(
+    "MappedRead(%d, %s, %s, %d, %d, %d, %s, %s, %s)".format(
+      token,
+      readName,
+      sampleName,
+      alignmentQuality,
       start,
+      end,
       cigar.toString,
       mdTagString,
       Bases.basesToString(sequence)
-    )
+    ) + (if (isPositiveStrand) ", Positive" else ", Negative")
 }
 
 case class MissingMDTagException(record: SAMRecord)

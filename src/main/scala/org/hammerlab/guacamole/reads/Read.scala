@@ -80,6 +80,8 @@ trait Read {
   /** Whether read is from a paired-end library */
   val isPaired: Boolean = matePropertiesOpt.isDefined
 
+  val readName: String
+
 }
 
 object Read extends Logging {
@@ -119,7 +121,8 @@ object Read extends Logging {
     mdTagString: String,
     failedVendorQualityChecks: Boolean = false,
     isPositiveStrand: Boolean = true,
-    matePropertiesOpt: Option[MateProperties] = None): Read = {
+    matePropertiesOpt: Option[MateProperties] = None,
+    readName: String = ""): Read = {
 
     val sequenceArray = sequence.map(_.toByte).toArray
     val qualityScoresArray = baseQualityStringToArray(baseQualities, sequenceArray.length)
@@ -133,7 +136,8 @@ object Read extends Logging {
         sampleName.intern,
         failedVendorQualityChecks,
         isPositiveStrand,
-        matePropertiesOpt = matePropertiesOpt
+        matePropertiesOpt = matePropertiesOpt,
+        readName
       )
     } else {
       val cigar = TextCigarCodec.getSingleton.decode(cigarString)
@@ -150,7 +154,8 @@ object Read extends Logging {
         mdTagString,
         failedVendorQualityChecks,
         isPositiveStrand,
-        matePropertiesOpt = matePropertiesOpt
+        matePropertiesOpt = matePropertiesOpt,
+        readName
       )
     }
   }
@@ -230,7 +235,8 @@ object Read extends Logging {
             mdTagString = mdTagString,
             failedVendorQualityChecks = record.getReadFailsVendorQualityCheckFlag,
             isPositiveStrand = !record.getReadNegativeStrandFlag,
-            matePropertiesOpt = matePropertiesOpt
+            matePropertiesOpt = matePropertiesOpt,
+            record.getReadName
           )
 
           // We subtract 1 from start, since samtools is 1-based and we're 0-based.
@@ -254,7 +260,8 @@ object Read extends Logging {
         sampleName,
         record.getReadFailsVendorQualityCheckFlag,
         !record.getReadNegativeStrandFlag,
-        matePropertiesOpt = matePropertiesOpt
+        matePropertiesOpt = matePropertiesOpt,
+        record.getReadName
       )
       Some(result)
     }
@@ -414,7 +421,8 @@ object Read extends Logging {
         mdTagString = alignmentRecord.getMismatchingPositions.toString,
         failedVendorQualityChecks = alignmentRecord.getFailedVendorQualityChecks,
         isPositiveStrand = !alignmentRecord.getReadNegativeStrand,
-        matePropertiesOpt = mateProperties
+        matePropertiesOpt = mateProperties,
+        ""
       )
     } else {
       UnmappedRead(
@@ -425,8 +433,10 @@ object Read extends Logging {
         sampleName = alignmentRecord.getRecordGroupSample.toString.intern(),
         failedVendorQualityChecks = alignmentRecord.getFailedVendorQualityChecks,
         isPositiveStrand = !alignmentRecord.getReadNegativeStrand,
-        matePropertiesOpt = mateProperties
+        matePropertiesOpt = mateProperties,
+        ""
       )
+
     }
   }
 

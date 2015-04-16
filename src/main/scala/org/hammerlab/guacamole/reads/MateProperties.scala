@@ -26,5 +26,13 @@ case class MateProperties(isFirstInPair: Boolean,
                           isMatePositiveStrand: Boolean) {
   // If the mate is mapped check that we also know where it is mapped
   assert(!isMateMapped || (mateReferenceContig.isDefined && mateStart.isDefined))
+
+  override def toString(): String =
+    {
+      var retString = if (isFirstInPair) "First, " else "Second, "
+      retString = retString + inferredInsertSize + ", "
+      retString = retString + mateStart + ", "
+      retString
+    }
 }
 
