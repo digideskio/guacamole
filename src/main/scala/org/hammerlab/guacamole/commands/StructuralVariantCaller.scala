@@ -350,10 +350,10 @@ object StructuralVariant {
 
       Common.progress("Computed Loci")
 
-      val groupedLociAlignmentArray: Array[(Long, Iterable[AlignmentPair])] =
-        groupedLociAlignmentRDD.take(10)
+      // val groupedLociAlignmentArray: Array[(Long, Iterable[AlignmentPair])] =
+      //   groupedLociAlignmentRDD.take(10)
 
-      Common.progress("Collected Loci Array")
+      // Common.progress("Collected Loci Array")
 
       // groupedLociAlignmentRDD
       //   .sortBy(pair => pair._2.size, false)
@@ -370,17 +370,18 @@ object StructuralVariant {
 
       // Reduce(GenomicLocation, ReadPairInfos)
 
-      // val lociSVFeaturesRDD: RDD[(Long, SVFeatures)] =
-      //   groupedLociAlignmentRDD
-      //     .map(pair => (pair._1, SVFeatures(pair._2)))
-
-      val lociSVFeaturesArray: Array[(Long, SVFeatures)] =
-        groupedLociAlignmentArray
+      val lociSVFeaturesRDD: RDD[(Long, SVFeatures)] =
+        groupedLociAlignmentRDD
           .map(pair => (pair._1, SVFeatures(pair._1, pair._2)))
+
+      // val lociSVFeaturesArray: Array[(Long, SVFeatures)] =
+      //   groupedLociAlignmentRDD
+      //     .take(1000)
+      //     .map(pair => (pair._1, SVFeatures(pair._1, pair._2)))
 
       Common.progress("Computed Loci Features")
 
-      lociSVFeaturesArray.foreach(pair => println(pair._1 + ": " + pair._2))
+      lociSVFeaturesRDD.foreach(pair => println(pair._1 + ": " + pair._2))
 
     }
 
