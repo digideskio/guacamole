@@ -44,7 +44,7 @@ object SVFeatures {
                 //w + lognormal(y, mu, sigma)
                 .map(pair => pair._1 + lognormal(y, pair._2, sigma))
 
-            logsumexp(weightedPointLikelihoods)
+            logsumexp(weightedPointLikelihoods) // The llh of the point in the GMM
           })
           .sum
 
@@ -128,11 +128,11 @@ object SVFeatures {
 
       val wPrime = nArray.map(n => n - math.log(yArray.length))
       val muPrime = muArray.clone
+      muPrime(1) = updateMuForComponent(gArray, yArray, nArray, 1)
 
       assert(wPrime.length > 0)
       assert(muPrime.length > 0)
 
-      // val mu1Prime = updateMuForComponent(gArray, yArray, nArray, 1)
       // muPrime(1) = mu1Prime
 
       (wPrime, muPrime)
@@ -158,18 +158,19 @@ object SVFeatures {
       true
     }
 
+    // Array of insert sizes
     val yArray: Array[Double] =
       alignmentPairs
         .filter(alignmentPairFilter)
         .toArray
         .map(alignmentPair => alignmentPair.insertSize.toDouble)
 
-    var i = 0;
-    var w: Array[Double] = Array(math.log(.5), math.log(.5))
-    var mu: Array[Double] = Array(insertSizeMean, (yArray.sum / yArray.length))
-    val sigma = insertSizeSD
-    var lprime: Double = likelihood(yArray, w, mu, sigma)
-    var l: Double = Double.PositiveInfinity
+    var i = 0; // The amount of iterations
+    var w: Array[Double] = Array(math.log(.5), math.log(.5)) // Array with the logs of the weights of both Gaussians
+    var mu: Array[Double] = Array(insertSizeMean, (yArray.sum / yArray.length)) // The means of both Gaussians
+    val sigma = insertSizeSD // The stdev of both Gaussians (should be equal)
+    var lprime: Double = likelihood(yArray, w, mu, sigma) // LLH of GMM fit
+    var l: Double = Double.PositiveInfinity // The previous lprime
 
     assert(w.length > 0)
     assert(mu.length > 0)
@@ -195,7 +196,7 @@ object SVFeatures {
 
       i += 1
     }
-
+    // LLH of N(mu, sigma) fit
     val nodelOneComponentLikelihood = likelihood(yArray, Array[Double](math.log(1)), Array[Double](insertSizeMean), sigma)
     // println(l)
     // println(nodelOneComponentLikelihood)
