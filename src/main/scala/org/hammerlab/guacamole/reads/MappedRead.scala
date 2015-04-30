@@ -43,6 +43,7 @@ case class MappedRead(
     start: Long,
     cigar: Cigar,
     mdTagString: String,
+    numMismatches: Int,
     failedVendorQualityChecks: Boolean,
     isPositiveStrand: Boolean,
     matePropertiesOpt: Option[MateProperties],
@@ -84,6 +85,14 @@ case class MappedRead(
    */
   val end: Long = start + cigar.getPaddedReferenceLength
 
+  val chr: String = referenceContig
+  val mismatchScore: Double = Math.exp(-1.0 * numMismatches.toDouble / 2.0)
+  // if (numMismatches != 0) {
+  //   println("Found nonzero numMismatches")
+  //   println(numMismatches)
+  //   println(mismatchScore)
+  // }
+
   /**
    * A read can be "clipped", meaning that some prefix or suffix of it did not align. This is the start of the whole
    * read's alignment, including any initial clipped bases.
@@ -100,15 +109,18 @@ case class MappedRead(
   })
 
   override def toString(): String =
-    "MappedRead(%d, %s, %s, %d, %d, %d, %s, %s, %s)".format(
+    "MappedRead(%d, %s, %s, %s, %d, %d, %d, %s, %s, %d, %f, %s)".format(
       token,
       readName,
+      chr,
       sampleName,
       alignmentQuality,
       start,
       end,
       cigar.toString,
       mdTagString,
+      numMismatches,
+      mismatchScore,
       Bases.basesToString(sequence)
     ) + (if (isPositiveStrand) ", Positive" else ", Negative")
 }

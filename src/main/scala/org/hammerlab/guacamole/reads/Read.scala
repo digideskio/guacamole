@@ -119,6 +119,7 @@ object Read extends Logging {
     start: Long = -1L,
     cigarString: String = "",
     mdTagString: String,
+    numMismatches: Int,
     failedVendorQualityChecks: Boolean = false,
     isPositiveStrand: Boolean = true,
     matePropertiesOpt: Option[MateProperties] = None,
@@ -152,6 +153,7 @@ object Read extends Logging {
         start,
         cigar,
         mdTagString,
+        numMismatches,
         failedVendorQualityChecks,
         isPositiveStrand,
         matePropertiesOpt = matePropertiesOpt,
@@ -221,7 +223,14 @@ object Read extends Logging {
 
     if (isMapped) {
       Option(record.getStringAttribute("MD")) match {
+
         case Some(mdTagString) =>
+
+          val numMismatches: Int = Option(record.getIntegerAttribute("NM")) match {
+            case Some(x) => x.toInt
+            case None    => 0
+          }
+
           val result = MappedRead(
             token,
             record.getReadString.getBytes,
@@ -233,6 +242,7 @@ object Read extends Logging {
             record.getAlignmentStart - 1,
             cigar = record.getCigar,
             mdTagString = mdTagString,
+            numMismatches = numMismatches,
             failedVendorQualityChecks = record.getReadFailsVendorQualityCheckFlag,
             isPositiveStrand = !record.getReadNegativeStrandFlag,
             matePropertiesOpt = matePropertiesOpt,
@@ -391,6 +401,8 @@ object Read extends Logging {
    */
   def fromADAMRecord(alignmentRecord: AlignmentRecord, token: Int): Read = {
 
+    assert(false)
+
     val mateProperties = if (alignmentRecord.getReadPaired) {
       Some(MateProperties(
         isFirstInPair = alignmentRecord.getFirstOfPair,
@@ -419,6 +431,7 @@ object Read extends Logging {
         start = alignmentRecord.getStart,
         cigar = TextCigarCodec.getSingleton.decode(alignmentRecord.getCigar.toString),
         mdTagString = alignmentRecord.getMismatchingPositions.toString,
+        0,
         failedVendorQualityChecks = alignmentRecord.getFailedVendorQualityChecks,
         isPositiveStrand = !alignmentRecord.getReadNegativeStrand,
         matePropertiesOpt = mateProperties,

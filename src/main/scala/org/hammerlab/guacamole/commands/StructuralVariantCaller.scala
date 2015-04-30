@@ -32,12 +32,13 @@ import org.hammerlab.guacamole.filters.PileupFilter.PileupFilterArguments
 import org.hammerlab.guacamole.filters.{ GenotypeFilter, QualityAlignedReadsFilter }
 import org.hammerlab.guacamole.pileup.Pileup
 import org.hammerlab.guacamole.reads.Read
-import org.kohsuke.args4j.Option
+// import org.kohsuke.args4j.Option
 
 import scala.math
 import org.hammerlab.guacamole.AlignmentPairList
 import org.hammerlab.guacamole.AlignmentPair
 import org.hammerlab.guacamole.SVFeatures
+import org.hammerlab.guacamole.GenomicLocation
 //https://commons.apache.org/proper/commons-math/javadocs/api-3.3/org/apache/commons/math3/distribution/fitting/MultivariateNormalMixtureExpectationMaximization.html
 // import org.apache.commons.math3.distribution.fitting.MultivariateNormalMixtureExpectationMaximization
 
@@ -276,6 +277,8 @@ object StructuralVariant {
     override val name = "structural-variant"
     override val description = "TBD"
 
+    val DEFAULT_RESOLUTION = 25
+
     override def run(args: Arguments, sc: SparkContext): Unit = {
 
       // val readSet: ReadSet = Common.loadReadsFromArguments(args, sc, Read.InputFilters(mapped = true, nonDuplicate = true, passedVendorQualityChecks = true, isPaired = true))
@@ -294,20 +297,29 @@ object StructuralVariant {
           .mappedReads
           .groupBy(read => read.readName)
 
-      // readPairs.take(100).foreach(pair => {
-      //   println("\nPrinting " + pair._1)
-      //   pair._2.foreach(read => {
-      //     println(read)
-      //     read.matePropertiesOpt match {
-      //       case Some(mate) => {
-      //         println(mate)
+      // readPairs
+      //   .flatMap(pair => pair._2)
+      //   .filter(mr => mr.numMismatches > 0)
+      //   .foreach(println)
+
+      println("Read " + readPairs.count + " read pairs")
+
+      // readPairs
+      //   .take(100).foreach(pair => {
+      //     println("\nPrinting " + pair._1)
+      //     pair._2.foreach(read => {
+      //       println(read)
+      //       read.matePropertiesOpt match {
+      //         case Some(mate) => {
+      //           println(mate)
+      //         }
+      //         case None => {}
       //       }
-      //       case None => {}
-      //     }
 
+      //     })
       //   })
-      // })
 
+      //ReadPairAlignments
       val readAlignmentPairLists: RDD[(String, AlignmentPairList)] =
         readPairs
           .map(pair => {
@@ -317,33 +329,55 @@ object StructuralVariant {
               ((m1, m2) => {
                 val insertSize = scala.math.abs(m2.end - m1.start)
 
-                if (insertSize > 25000) false
-                else if (!m1.isPositiveStrand || m2.isPositiveStrand) false
-                else true
+                // println(m1)
+                // println(m2)
+
+                if (insertSize > 25000) {
+                  // println("Insert size " + m1)
+                  // println("Insert size " + m2)
+                  false
+                } else if (!m1.isPositiveStrand || m2.isPositiveStrand) {
+                  // println("Discordant " + m1)
+                  // println("Discordant " + m2)
+                  false
+                } else true
               })
             ))
 
           })
 
-      // readAlignmentPairLists.take(10).foreach(pair => {
+      // println("Printing read alignment pairs")
+      // readAlignmentPairLists.take(1000).foreach(pair => {
 
       //   println("\nPrinting " + pair._1)
-      //   pair._2.alignmentPairs.foreach(alignmentPair => {
-      //     println(alignmentPair.firstRead)
-      //     println(alignmentPair.secondRead)
-      //     println(alignmentPair.loci)
-      //   })
+      //   pair._2.alignmentPairs.foreach(println)
 
       // })
 
       // println("Filtered values = " + (readPairs.count - readAlignmentPairLists.count))
 
-      val lociAlignmentPairsRDD: RDD[(Long, AlignmentPair)] =
+      // println("Printing read alignment pairs = " + readAlignmentPairLists.count)
+      // readAlignmentPairLists.take(10).foreach(pair => {
+
+      //   println(pair._1)
+      //   println(pair._2)
+
+      // })
+
+      val lociAlignmentPairsRDD: RDD[(GenomicLocation, AlignmentPair)] =
         readAlignmentPairLists
           .map(pair => pair._2)
           .flatMap(alignmentPairList => alignmentPairList.lociAlignmentPairs)
 
-      val groupedLociAlignmentRDD: RDD[(Long, Iterable[AlignmentPair])] =
+      // println("Printing loci alignment pairs = " + lociAlignmentPairsRDD.count)
+      // lociAlignmentPairsRDD.take(10).foreach(pair => {
+
+      //   println(pair._1)
+      //   println(pair._2)
+
+      // })
+
+      val groupedLociAlignmentRDD: RDD[(GenomicLocation, Iterable[AlignmentPair])] =
         lociAlignmentPairsRDD
           .groupBy(pair => pair._1)
           .map(pair => (pair._1, pair._2.map(lap => lap._2)))
@@ -368,11 +402,22 @@ object StructuralVariant {
 
       //   })
 
-      // Reduce(GenomicLocation, ReadPairInfos)
+      // // Reduce(GenomicLocation, ReadPairInfos)
 
-      val lociSVFeaturesRDD: RDD[(Long, SVFeatures)] =
+      Common.progress("Number of locations" + groupedLociAlignmentRDD.count)
+
+      val lociSVFeaturesRDD: RDD[(GenomicLocation, Option[SVFeatures])] =
         groupedLociAlignmentRDD
-          .map(pair => (pair._1, SVFeatures(pair._1, pair._2)))
+          .map(pair => {
+            (pair._1, SVFeatures(pair._1, pair._2))
+            // val features = SVFeatures(pair._1, pair._2)
+            // features match {
+            //   case Some(sv) => (pair._1, sv)
+            //   case None     => None
+            // }
+          })
+
+      // Common.progress("Number of features" + lociSVFeaturesRDD.count)
 
       // val lociSVFeaturesArray: Array[(Long, SVFeatures)] =
       //   groupedLociAlignmentRDD
@@ -381,7 +426,13 @@ object StructuralVariant {
 
       Common.progress("Computed Loci Features")
 
-      lociSVFeaturesRDD.foreach(pair => println(pair._1 + ": " + pair._2))
+      lociSVFeaturesRDD
+        .filter(pair => pair._2 match {
+          case Some(sv) => sv.lrHeterozygous > 1.0 && sv.w0 > 0.5
+          case _        => false
+        })
+        .sortBy(pair => pair._1.position)
+        .foreach(pair => println(pair._1 + ": " + pair._2))
 
     }
 

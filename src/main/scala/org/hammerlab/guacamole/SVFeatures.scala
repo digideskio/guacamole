@@ -5,12 +5,16 @@ import scala.math
 object SVFeatures {
 
   def apply(
-    locus: Long,
+    locus: GenomicLocation,
+    // locus: Long,
     alignmentPairs: Iterable[AlignmentPair],
     insertSizeMean: Long = 300,
     insertSizeSD: Long = 30,
     maxIterations: Int = 100,
-    convergenceThreshold: Double = 0.0001): SVFeatures = {
+    convergenceThreshold: Double = 0.0001,
+    maxLogMapQDiff: Double = 6,
+    kthNearestNeighbor: Int = 2,
+    cutoffInSDs: Int = 5): Option[SVFeatures] = {
 
     def lognormal(y: Double, mu: Double, sigma: Double): Double = {
       -1.0 * math.log(sigma + math.sqrt(2.0 * math.Pi)) + -1.0 / 2.0 * math.pow(((y - mu) / sigma), 2)
@@ -154,54 +158,90 @@ object SVFeatures {
     //filters include nearest neighbors and adaptave quality
     // val filteredAlignmentPairs: Array[AlignmentPair] = alignmentPairs.toArray
 
-    def alignmentPairFilter(ap: AlignmentPair): Boolean = {
-      true
+    lazy val bestMappingQuality: Double =
+      alignmentPairs.map(ap => ap.probabilityMappingIsCorrect).max
+
+    def adaptiveQualityFilter(ap: AlignmentPair): Boolean = {
+      (bestMappingQuality - ap.probabilityMappingIsCorrect) <= maxLogMapQDiff
     }
 
-    // Array of insert sizes
-    val yArray: Array[Double] =
+    //naive kNN implementation. Could be optimized, but assuming that 
+    // EM is main driver of computational compexity
+    // Compute distances to all other alignment pairs,
+    // Sort distances into array
+    // Get distance of kth nearest neighbor 
+    // (keep in mind that distance to itself will be 0 at index 0)
+    // take top K+1 values
+    // ensure that there does not exists a distance > cutoffInSDs * insertSizeSD
+    def outlierDetectionFilter(ap: AlignmentPair): Boolean = {
+
+      val sortedDistances: Array[Long] =
+        alignmentPairs
+          .map(ap2 => Math.abs(ap.insertSize - ap2.insertSize))
+          .toArray
+          .sorted
+          .take(kthNearestNeighbor + 1)
+
+      !sortedDistances.exists(distance => distance > cutoffInSDs * insertSizeSD)
+    }
+
+    val postFilter1: Iterable[AlignmentPair] =
       alignmentPairs
-        .filter(alignmentPairFilter)
+        .filter(adaptiveQualityFilter)
+
+    // Common.progress("Post Filter 1 Size = " + postFilter1.size)
+
+    val postFilter2: Iterable[AlignmentPair] =
+      postFilter1
+        .filter(outlierDetectionFilter)
+
+    // Common.progress("Post Filter 2 Size = " + postFilter2.size)
+
+    val yArray: Array[Double] =
+      postFilter2
         .toArray
         .map(alignmentPair => alignmentPair.insertSize.toDouble)
 
-    var i = 0; // The amount of iterations
-    var w: Array[Double] = Array(math.log(.5), math.log(.5)) // Array with the logs of the weights of both Gaussians
-    var mu: Array[Double] = Array(insertSizeMean, (yArray.sum / yArray.length)) // The means of both Gaussians
-    val sigma = insertSizeSD // The stdev of both Gaussians (should be equal)
-    var lprime: Double = likelihood(yArray, w, mu, sigma) // LLH of GMM fit
-    var l: Double = Double.PositiveInfinity // The previous lprime
-
-    assert(w.length > 0)
-    assert(mu.length > 0)
-    assert(yArray.length > 0)
-
-    while (math.abs(l - lprime) > convergenceThreshold && i < maxIterations) {
-
-      val threshold: Double = math.abs(l - lprime)
-      // Common.progress("Locus: %d, Iteration: %d".format(locus, i))
-      // Common.progress("Threshold : %f".format(threshold))
-      l = lprime
-
-      val pair = emStep(yArray, w, mu, sigma)
-
-      w = pair._1
-      mu = pair._2
+    if (yArray.length > 1) {
+      var i = 0; // The amount of iterations
+      var w: Array[Double] = Array(math.log(.5), math.log(.5)) // Array with the logs of the weights of both Gaussians
+      var mu: Array[Double] = Array(insertSizeMean, (yArray.sum / yArray.length)) // The means of both Gaussians
+      val sigma = insertSizeSD // The stdev of both Gaussians (should be equal)
+      var lprime: Double = likelihood(yArray, w, mu, sigma) // LLH of GMM fit
+      var l: Double = Double.PositiveInfinity // The previous lprime
 
       assert(w.length > 0)
       assert(mu.length > 0)
       assert(yArray.length > 0)
 
-      lprime = likelihood(yArray, w, mu, sigma)
+      while (math.abs(l - lprime) > convergenceThreshold && i < maxIterations) {
 
-      i += 1
-    }
-    // LLH of N(mu, sigma) fit
-    val nodelOneComponentLikelihood = likelihood(yArray, Array[Double](math.log(1)), Array[Double](insertSizeMean), sigma)
-    // println(l)
-    // println(nodelOneComponentLikelihood)
+        val threshold: Double = math.abs(l - lprime)
+        // Common.progress("Locus: %d, Iteration: %d".format(locus, i))
+        // Common.progress("Threshold : %f".format(threshold))
+        l = lprime
 
-    new SVFeatures(math.exp(w(0)), mu(1), l - nodelOneComponentLikelihood)
+        val pair = emStep(yArray, w, mu, sigma)
+
+        w = pair._1
+        mu = pair._2
+
+        assert(w.length > 0)
+        assert(mu.length > 0)
+        assert(yArray.length > 0)
+
+        lprime = likelihood(yArray, w, mu, sigma)
+
+        i += 1
+      }
+      // LLH of N(mu, sigma) fit
+      val nodelOneComponentLikelihood = likelihood(yArray, Array[Double](math.log(1)), Array[Double](insertSizeMean), sigma)
+      // println(l)
+      // println(nodelOneComponentLikelihood)
+
+      Some(new SVFeatures(math.exp(w(0)), mu(1), l - nodelOneComponentLikelihood))
+    } else None
+
   }
 }
 
