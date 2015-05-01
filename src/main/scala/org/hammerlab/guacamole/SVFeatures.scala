@@ -202,7 +202,8 @@ object SVFeatures {
         .toArray
         .map(alignmentPair => alignmentPair.insertSize.toDouble)
 
-    if (yArray.length > 1) {
+    //can we get ok data with only one read at a particular locus?
+    if (yArray.length >= 1) {
       var i = 0; // The amount of iterations
       var w: Array[Double] = Array(math.log(.5), math.log(.5)) // Array with the logs of the weights of both Gaussians
       var mu: Array[Double] = Array(insertSizeMean, (yArray.sum / yArray.length)) // The means of both Gaussians
@@ -242,6 +243,10 @@ object SVFeatures {
       Some(new SVFeatures(math.exp(w(0)), mu(1), l - nodelOneComponentLikelihood))
     } else None
 
+  }
+
+  def avg(sv1: SVFeatures, sv2: SVFeatures): SVFeatures = {
+    new SVFeatures((sv1.w0 + sv2.w0) / 2, (sv1.mu2 + sv2.mu2) / 2, (sv1.lrHeterozygous + sv2.lrHeterozygous) / 2)
   }
 }
 

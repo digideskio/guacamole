@@ -20,6 +20,7 @@ package org.hammerlab.guacamole.commands
 
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.SparkContext._
 import org.hammerlab.guacamole.{ DelayedMessages, Concordance, DistributedUtil, Common, SparkCommand }
 import org.hammerlab.guacamole.Common.Arguments.StructuralVariantArgs
 import org.hammerlab.guacamole.ReadSet
@@ -32,7 +33,7 @@ import org.hammerlab.guacamole.filters.PileupFilter.PileupFilterArguments
 import org.hammerlab.guacamole.filters.{ GenotypeFilter, QualityAlignedReadsFilter }
 import org.hammerlab.guacamole.pileup.Pileup
 import org.hammerlab.guacamole.reads.Read
-// import org.kohsuke.args4j.Option
+import org.kohsuke.args4j.{ Option => Opt }
 
 import scala.math
 import org.hammerlab.guacamole.AlignmentPairList
@@ -271,6 +272,8 @@ object StructuralVariant {
 
   protected class Arguments extends StructuralVariantArgs {
 
+    //median filter window
+    //resolution
   }
 
   object Caller extends SparkCommand[Arguments] {
@@ -278,6 +281,7 @@ object StructuralVariant {
     override val description = "TBD"
 
     val DEFAULT_RESOLUTION = 25
+    val LR_Heterozygous_Filter_Value = 1.68
 
     override def run(args: Arguments, sc: SparkContext): Unit = {
 
@@ -406,7 +410,8 @@ object StructuralVariant {
 
       Common.progress("Number of locations" + groupedLociAlignmentRDD.count)
 
-      val lociSVFeaturesRDD: RDD[(GenomicLocation, Option[SVFeatures])] =
+      //GMM results iterator
+      val lociSVFeaturesRDD: RDD[(GenomicLocation, SVFeatures)] =
         groupedLociAlignmentRDD
           .map(pair => {
             (pair._1, SVFeatures(pair._1, pair._2))
@@ -416,6 +421,15 @@ object StructuralVariant {
             //   case None     => None
             // }
           })
+          .filter(pair => {
+            pair._2 match {
+              case None => false
+              case _    => true
+            }
+          })
+          .map(pair => {
+            (pair._1, pair._2.get)
+          })
 
       // Common.progress("Number of features" + lociSVFeaturesRDD.count)
 
@@ -424,14 +438,106 @@ object StructuralVariant {
       //     .take(1000)
       //     .map(pair => (pair._1, SVFeatures(pair._1, pair._2)))
 
-      Common.progress("Computed Loci Features")
+      // Common.progress("Computed Loci Features")
 
-      lociSVFeaturesRDD
-        .filter(pair => pair._2 match {
-          case Some(sv) => sv.lrHeterozygous > 1.0 && sv.w0 > 0.5
-          case _        => false
+      // lociSVFeaturesRDD
+      //   .filter(pair => pair._2 match {
+      //     case Some(sv) => sv.lrHeterozygous > 1.0 && sv.w0 > 0.5
+      //     case _        => false
+      //   })
+      //   .sortBy(pair => pair._1.position)
+      //   .foreach(pair => println(pair._1 + ": " + pair._2))
+
+      // POST PROCESSING
+
+      def medianFilterFunction(it: Seq[SVFeatures]): SVFeatures = {
+        assert(it.size > 0)
+        val itArray = it.toArray
+        // sort array by lrHeterozygous, then take middle SVFeature
+        if (itArray.size % 2 == 1)
+          itArray.sortBy(sv => sv.lrHeterozygous).apply(itArray.size / 2)
+        else {
+          val median1: SVFeatures = itArray.sortBy(sv => sv.lrHeterozygous).apply((itArray.size / 2) - 1)
+          val median2: SVFeatures = itArray.sortBy(sv => sv.lrHeterozygous).apply((itArray.size / 2))
+          SVFeatures.avg(median1, median2)
+        }
+
+      }
+
+      def computeWindows(lociFeaturesRDD: RDD[(GenomicLocation, SVFeatures)], windowSize: Int = 5): RDD[(GenomicLocation, Seq[SVFeatures])] = {
+        assert(windowSize % 2 == 1)
+        assert(windowSize > 1)
+
+        val negList = (-windowSize / 2 to -1)
+        val posList = (1 to windowSize / 2)
+        val list = negList ++ posList
+
+        // get list of unique chromosomes
+        // val distinctChromosomes = 
+        //   lociFeaturesRDD
+        //     .map(pair => pair._1.chromosome)
+        //     .distinct
+        //     .collect
+
+        // println("We have found " + distinctChromosomes.length + " distinct chromosomes")
+
+        // val chromosomeWindows = 
+        //   distinctChromosomes.map( chr => {
+
+        //init to parameter
+        var longRDD: RDD[(GenomicLocation, SVFeatures)] = lociFeaturesRDD
+
+        list.foreach(i => {
+
+          val shiftedRDD =
+            lociFeaturesRDD.map(pair => {
+              //need to remove magic number
+              val newPosition = pair._1.position + i * 25
+              val newGenomicLocation = GenomicLocation(pair._1.chromosome, newPosition)
+
+              (newGenomicLocation, pair._2)
+            })
+
+          longRDD = longRDD ++ shiftedRDD
+
+          //does a sort here make the join faster???
         })
-        .sortBy(pair => pair._1.position)
+
+        val combinedRDD: RDD[(GenomicLocation, Seq[SVFeatures])] =
+          longRDD
+            .aggregateByKey(Seq[SVFeatures]())(
+              (acc: Seq[SVFeatures], sv: SVFeatures) => acc :+ sv,
+              (it1: Seq[SVFeatures], it2: Seq[SVFeatures]) => it1 ++ it2
+            )
+
+        // })
+
+        combinedRDD
+
+      }
+
+      val lociWindows: RDD[(GenomicLocation, Seq[SVFeatures])] =
+        computeWindows(lociSVFeaturesRDD)
+
+      val lociWithMedianFeatures: RDD[(GenomicLocation, SVFeatures)] =
+        lociWindows
+          .mapValues(seq => medianFilterFunction(seq))
+          .filter(pair => pair._2.lrHeterozygous > LR_Heterozygous_Filter_Value)
+
+      // lociWindows
+      //   .sortBy(pair => pair._1.position)
+      //   .take(100)
+      //   .foreach(pair => {
+      //     println(pair._1 + ": " + pair._2.size + " features")
+
+      //     pair._2.foreach(println)
+
+      //     println("Median: " + medianFilterFunction(pair._2))
+
+      //   })
+
+      lociWithMedianFeatures
+        .take(100)
         .foreach(pair => println(pair._1 + ": " + pair._2))
 
     }
