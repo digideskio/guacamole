@@ -317,6 +317,7 @@ object StructuralVariant {
     val DEFAULT_RESOLUTION = 25
     val LR_GMM_Fit_Filter_Value = 1.68
     val INSERT_SIZE = 300.0
+    val INSERT_SIZE_SD = 30.0
 
     override def run(args: Arguments, sc: SparkContext): Unit = {
 
@@ -341,7 +342,7 @@ object StructuralVariant {
       //   .filter(mr => mr.numMismatches > 0)
       //   .foreach(println)
 
-      println("Read " + readPairs.count + " read pairs")
+      // Common.progress("Read " + readPairs.count + " read pairs")
 
       // readPairs
       //   .take(100).foreach(pair => {
@@ -407,7 +408,7 @@ object StructuralVariant {
         readAlignmentPairLists
           .map(pair => pair._2)
           .flatMap(alignmentPairList => alignmentPairList.lociAlignmentPairs)
-          .filter(pair => pair._1.position > 9000000)
+      // .filter(pair => pair._1.position > 9000000)
 
       // println("Printing loci alignment pairs = " + lociAlignmentPairsRDD.count)
       // lociAlignmentPairsRDD.take(10).foreach(pair => {
@@ -444,27 +445,17 @@ object StructuralVariant {
 
       // // Reduce(GenomicLocation, ReadPairInfos)
 
-      Common.progress("Number of locations" + groupedLociAlignmentRDD.count)
+      // Common.progress("Number of locations " + groupedLociAlignmentRDD.count)
 
       //GMM results iterator
       val lociSVFeaturesRDD: RDD[(GenomicLocation, SVFeatures)] =
         groupedLociAlignmentRDD
           .map(pair => {
-            (pair._1, SVFeatures(pair._1, pair._2))
-            // val features = SVFeatures(pair._1, pair._2)
-            // features match {
-            //   case Some(sv) => (pair._1, sv)
-            //   case None     => None
-            // }
-          })
-          .filter(pair => {
-            pair._2 match {
-              case None => false
-              case _    => true
+            val features = SVFeatures(pair._1, pair._2)
+            features match {
+              case Some(sv) => (pair._1, sv)
+              case None     => (pair._1, new SVFeatures(0.0, 0.0, 0.0))
             }
-          })
-          .map(pair => {
-            (pair._1, pair._2.get)
           })
 
       // Common.progress("Number of features" + lociSVFeaturesRDD.count)
@@ -474,7 +465,7 @@ object StructuralVariant {
       //     .take(1000)
       //     .map(pair => (pair._1, SVFeatures(pair._1, pair._2)))
 
-      // Common.progress("Computed Loci Features")
+      Common.progress("Computed Loci Features")
 
       // lociSVFeaturesRDD
       //   .filter(pair => pair._2 match {
@@ -578,8 +569,8 @@ object StructuralVariant {
           })
           .groupByKey
 
-      println(locusFeaturePairsWithId.count)
-      println(locusWindows.count)
+      // println(locusFeaturePairsWithId.count)
+      // println(locusWindows.count)
 
       val joinedLocusWindows: RDD[((GenomicLocation, SVFeatures), Iterable[(GenomicLocation, SVFeatures)])] =
         locusFeaturePairsWithId
@@ -611,6 +602,8 @@ object StructuralVariant {
           .filter(pair => pair._2.lrGMMFit > LR_GMM_Fit_Filter_Value)
           .sortBy(pair => (pair._1.chromosome, pair._1.position))
 
+      Common.progress("Completed Median Filtering")
+
       // println("There are " + lociWithMedianFeatures.count + " filtered values")
       // lociWithMedianFeatures
       //   .foreach(println)
@@ -619,7 +612,7 @@ object StructuralVariant {
       //we need to do region edge detection
       //compute windows of each point and its neighbors
 
-      val edgeDetectionWindow = 3
+      val edgeDetectionWindow = 5
       val numberOfDataPoints = lociWithMedianFeatures.count
 
       val lociWithMedianFeaturesWithId: RDD[(Long, (GenomicLocation, SVFeatures))] =
@@ -658,15 +651,37 @@ object StructuralVariant {
             (originalPair, windowIterable)
           })
 
+      def muChangedTooMuch(position1: Long, position2: Long, windowIterable: Iterable[(GenomicLocation, SVFeatures)]): Boolean = {
+
+        val p1 =
+          windowIterable
+            .find(windowPair => windowPair._1.position == position1)
+
+        val p2 =
+          windowIterable
+            .find(windowPair => windowPair._1.position == position2)
+
+        (p1, p2) match {
+          case (Some(pair1), Some(pair2)) => (Math.abs(p1.get._2.mu2 - p2.get._2.mu2) > 2 * INSERT_SIZE_SD)
+          case _                          => false
+        }
+      }
+
       val startingPoints: Array[GenomicLocation] =
         lociWithNeighbors
           .filter(pair => {
             val originalPair = pair._1
             val windowIterable = pair._2
 
-            !windowIterable.exists(windowPair => {
-              windowPair._1.position < originalPair._1.position
-            })
+            val regionStarts =
+              !windowIterable.exists(windowPair => {
+                windowPair._1.position < originalPair._1.position
+              })
+
+            regionStarts
+            // if (regionStarts) true
+            // else muChangedTooMuch(originalPair._1.position - 2 * DEFAULT_RESOLUTION, originalPair._1.position, windowIterable)
+
           })
           .collect
           .map(pair => pair._1._1)
@@ -678,16 +693,22 @@ object StructuralVariant {
             val originalPair = pair._1
             val windowIterable = pair._2
 
-            !windowIterable.exists(windowPair => {
-              windowPair._1.position > originalPair._1.position
-            })
+            val regionEnds =
+              !windowIterable.exists(windowPair => {
+                windowPair._1.position > originalPair._1.position
+              })
+
+            regionEnds
+            // if (regionEnds) true
+            // else muChangedTooMuch(originalPair._1.position - DEFAULT_RESOLUTION, originalPair._1.position + DEFAULT_RESOLUTION, windowIterable)
           })
           .collect
           .map(pair => pair._1._1)
           .sortBy(location => (location.chromosome, location.position))
 
-      // println("There are " + startingPoints.length + " starting points")
-      // println("There are " + endingPoints.length + " ending points")
+      println("There are " + startingPoints.length + " starting points")
+
+      println("There are " + endingPoints.length + " ending points")
 
       assert(startingPoints.length == endingPoints.length)
 
@@ -739,13 +760,24 @@ object StructuralVariant {
 
             (regionId, RegionStatistics(startingLocation, endingLocation, avgMu2, avgW0))
           })
+          .filter(pair => pair._2.length >= 4 * DEFAULT_RESOLUTION)
+          .sortBy(pair => pair._1)
 
-      regionStats.foreach(pair => println(pair._1 + ": " + pair._2))
+      // regionStats.foreach(pair => println(pair._1 + ": " + pair._2))
 
       //Region stats
       // avgMu - mean
       // start, end, length, chromosome
       // avgW0 - mean
+
+      def validDeletionPrediction(regionStats: RegionStatistics): Boolean = {
+        (regionStats.averageMu2 > INSERT_SIZE) &&
+          (Math.abs(regionStats.length - regionStats.averageMu2) <= INSERT_SIZE)
+      }
+
+      def validInsertionPrediction(regionStats: RegionStatistics): Boolean = {
+        (regionStats.averageMu2 < INSERT_SIZE)
+      }
 
       val heteroThreshold = 0.35
 
@@ -756,12 +788,12 @@ object StructuralVariant {
             val regionStats = pair._2
 
             (regionStats.averageW0 < heteroThreshold) &&
-              (regionStats.averageMu2 > INSERT_SIZE)
+              validDeletionPrediction(regionStats)
 
           })
 
-      println(homozygousDeletions.count + " Homozygous Deletions Found")
-      homozygousDeletions.foreach(pair => println(pair._1 + ": " + pair._2))
+      Common.progress(homozygousDeletions.count + " Homozygous Deletions Found")
+      homozygousDeletions.foreach(pair => Common.progress(pair._1 + ": " + pair._2))
 
       val homozygousInsertions =
         regionStats
@@ -770,12 +802,12 @@ object StructuralVariant {
             val regionStats = pair._2
 
             (regionStats.averageW0 < heteroThreshold) &&
-              (regionStats.averageMu2 < INSERT_SIZE)
+              validInsertionPrediction(regionStats)
 
           })
 
-      println(homozygousInsertions.count + " Homozygous Insertions Found")
-      homozygousInsertions.foreach(pair => println(pair._1 + ": " + pair._2))
+      Common.progress(homozygousInsertions.count + " Homozygous Insertions Found")
+      homozygousInsertions.foreach(pair => Common.progress(pair._1 + ": " + pair._2))
 
       val heterozygousDeletions =
         regionStats
@@ -784,12 +816,12 @@ object StructuralVariant {
             val regionStats = pair._2
 
             (regionStats.averageW0 > heteroThreshold) &&
-              (regionStats.averageMu2 > INSERT_SIZE)
+              validDeletionPrediction(regionStats)
 
           })
 
-      println(heterozygousDeletions.count + " Heterozygous Deletions Found")
-      heterozygousDeletions.foreach(pair => println(pair._1 + ": " + pair._2))
+      Common.progress(heterozygousDeletions.count + " Heterozygous Deletions Found")
+      heterozygousDeletions.foreach(pair => Common.progress(pair._1 + ": " + pair._2))
 
       val heterozygousInsertions =
         regionStats
@@ -798,12 +830,12 @@ object StructuralVariant {
             val regionStats = pair._2
 
             (regionStats.averageW0 > heteroThreshold) &&
-              (regionStats.averageMu2 < INSERT_SIZE)
+              validInsertionPrediction(regionStats)
 
           })
 
-      println(heterozygousInsertions.count + " Heterozygous Insertions Found")
-      heterozygousInsertions.foreach(pair => println(pair._1 + ": " + pair._2))
+      Common.progress(heterozygousInsertions.count + " Heterozygous Insertions Found")
+      heterozygousInsertions.foreach(pair => Common.progress(pair._1 + ": " + pair._2))
 
     }
 
