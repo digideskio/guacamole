@@ -710,7 +710,56 @@ object StructuralVariant {
 
       println("There are " + endingPoints.length + " ending points")
 
-      assert(startingPoints.length == endingPoints.length)
+      val middleStartingPoints: Array[GenomicLocation] =
+        lociWithNeighbors
+          .filter(pair => {
+            val originalPair = pair._1
+            val windowIterable = pair._2
+
+            val regionStarts =
+              !windowIterable.exists(windowPair => {
+                windowPair._1.position < originalPair._1.position
+              })
+
+            // regionStarts
+            // if (regionStarts) true
+            // else muChangedTooMuch(originalPair._1.position - 2 * DEFAULT_RESOLUTION, originalPair._1.position, windowIterable)
+
+            !regionStarts &&
+              muChangedTooMuch(originalPair._1.position - 2 * DEFAULT_RESOLUTION, originalPair._1.position, windowIterable)
+          })
+          .collect
+          .map(pair => pair._1._1)
+          .sortBy(location => (location.chromosome, location.position))
+
+      val middleEndingPoints: Array[GenomicLocation] =
+        lociWithNeighbors
+          .filter(pair => {
+            val originalPair = pair._1
+            val windowIterable = pair._2
+
+            val regionEnds =
+              !windowIterable.exists(windowPair => {
+                windowPair._1.position > originalPair._1.position
+              })
+
+            regionEnds
+            // if (regionEnds) true
+            // else muChangedTooMuch(originalPair._1.position - DEFAULT_RESOLUTION, originalPair._1.position + DEFAULT_RESOLUTION, windowIterable)
+            !regionEnds &&
+              muChangedTooMuch(originalPair._1.position - DEFAULT_RESOLUTION, originalPair._1.position + DEFAULT_RESOLUTION, windowIterable)
+          })
+          .collect
+          .map(pair => pair._1._1)
+          .sortBy(location => (location.chromosome, location.position))
+
+      // assert(startingPoints.length == endingPoints.length)
+
+      println("There are " + middleStartingPoints.length + " middle starting points")
+      middleStartingPoints.foreach(println)
+
+      println("There are " + middleEndingPoints.length + " middle ending points")
+      middleEndingPoints.foreach(println)
 
       val regionIdentifiers: Array[((GenomicLocation, GenomicLocation), Int)] =
         // val regionIdentifiers: Array[(Int, Int, Long, Long)] =
