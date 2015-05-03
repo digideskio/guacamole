@@ -246,19 +246,19 @@ object SVFeatures {
   }
 
   def avg(sv1: SVFeatures, sv2: SVFeatures): SVFeatures = {
-    new SVFeatures((sv1.w0 + sv2.w0) / 2, (sv1.mu2 + sv2.mu2) / 2, (sv1.lrHeterozygous + sv2.lrHeterozygous) / 2)
+    new SVFeatures((sv1.w0 + sv2.w0) / 2, (sv1.mu2 + sv2.mu2) / 2, (sv1.lrGMMFit + sv2.lrGMMFit) / 2)
   }
 }
 
 class SVFeatures(
     val w0: Double,
     val mu2: Double,
-    val lrHeterozygous: Double) {
+    val lrGMMFit: Double) {
 
   override def toString(): String =
     "SVFeatures(%f, %f, %f)".format(
       w0,
       mu2,
-      lrHeterozygous)
+      lrGMMFit)
 
 }

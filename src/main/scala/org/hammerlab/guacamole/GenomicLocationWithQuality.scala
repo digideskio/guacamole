@@ -1,7 +1,7 @@
 package org.hammerlab.guacamole
 
 class GenomicLocationWithQuality(
-    val chromosome: String,
+    val chromosome: Int,
     val position: Long,
     val pMappingCorrect: Double = 1.0) {
 
@@ -17,18 +17,18 @@ class GenomicLocationWithQuality(
   override def hashCode = 41 * (pMappingCorrect.hashCode * (position.hashCode * (41 * (chromosome.hashCode + 41))))
 
   override def toString(): String =
-    "GenomicLocationWithQuality(%s, %d, %f)".format(
+    "GenomicLocationWithQuality(%d, %d, %f)".format(
       chromosome,
       position,
       pMappingCorrect)
 
-  def toGenomicLocation(): GenomicLocation = GenomicLocation(chromosome, position)
+  def toGenomicLocation(): GenomicLocation = new GenomicLocation(chromosome, position)
 
 }
 
 object GenomicLocationWithQuality {
   def apply(
-    chromosome: String,
+    chromosome: Int,
     position: Long,
     pMappingCorrect: Double): GenomicLocationWithQuality = {
     new GenomicLocationWithQuality(chromosome, position, pMappingCorrect)

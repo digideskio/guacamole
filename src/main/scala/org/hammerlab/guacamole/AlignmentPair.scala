@@ -20,6 +20,10 @@ class AlignmentPair(
   def loci(): Iterable[GenomicLocation] = {
     val start = firstRead.start
     val end = secondRead.end
+    val regex = """chr(\d+)""".r
+    val chr: Int = firstRead.chr match {
+      case regex(ch) => ch.toInt
+    }
 
     var lociStart = (start / lociInterval) * lociInterval
     if ((start - lociStart) > lociInterval / 2) lociStart += lociInterval
@@ -29,7 +33,7 @@ class AlignmentPair(
 
     // val lociRange: NumericRange = new NumericRange(lociStart, lociEnd, lociInterval.toLong, true)
     (lociStart to lociEnd by lociInterval.toLong)
-      .map(locus => GenomicLocation(firstRead.chr, locus))
+      .map(locus => new GenomicLocation(chr, locus))
 
   }
 

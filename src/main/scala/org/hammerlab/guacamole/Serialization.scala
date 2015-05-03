@@ -50,5 +50,8 @@ class GuacamoleKryoRegistrator extends ADAMKryoRegistrator {
     kryo.register(classOf[Allele], new AlleleSerializer)
     kryo.register(classOf[Genotype], new GenotypeSerializer)
     kryo.register(classOf[TaskPosition])
+
+    // Even though this was added, the default Java Serialzer is still being used for this object
+    kryo.register(classOf[GenomicLocation], new GenomicLocationSerializer)
   }
 }
