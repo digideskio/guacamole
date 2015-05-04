@@ -743,7 +743,7 @@ object StructuralVariant {
                 windowPair._1.position > originalPair._1.position
               })
 
-            regionEnds
+            // regionEnds
             // if (regionEnds) true
             // else muChangedTooMuch(originalPair._1.position - DEFAULT_RESOLUTION, originalPair._1.position + DEFAULT_RESOLUTION, windowIterable)
             !regionEnds &&

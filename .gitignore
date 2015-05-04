@@ -13,3 +13,5 @@ dependency-reduced-pom.xml
 data/
 TestUtil.*
 tmp/
+
+README.jdk.txt
